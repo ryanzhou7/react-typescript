@@ -296,7 +296,69 @@ type Alignment = Exclude<
 // if we wanted center rather than center-center
 ```
 
-## HOC with TS
+## [HOC with TS](https://stevekinney.github.io/react-and-typescript/higher-order-components)
 
-- https://stevekinney.github.io/react-and-typescript/higher-order-components
-- https://frontendmasters.com/courses/react-typescript/higher-order-components/
+- Create a HOC that accepts a character compatible component, C, that you can later instantiate with additional props
+
+```ts
+import { ComponentType, useState, useEffect, CSSProperties } from "react";
+import * as React from "react";
+
+export default function Application() {
+  const CharacterInformationWithCharacter = withCharacter(CharacterInformation);
+  return (
+    <CharacterInformationWithCharacter style={{ backgroundColor: "pink" }} />
+  );
+}
+
+export type CharacterType = {
+  name: string;
+  alignment: string;
+  power: number;
+};
+
+const CharacterInformation = ({
+  character: { name, alignment, power },
+  style,
+}: {
+  character: CharacterType;
+  style: CSSProperties;
+}) => {
+  return (
+    <div style={style}>
+      <h1>{name}</h1>
+      <div>Alignment: {alignment}</div>
+      <div>Power: {power}</div>
+    </div>
+  );
+};
+
+type WithCharacterProps = {
+  character: CharacterType;
+};
+function withCharacter<T>(Component: ComponentType<T>) {
+  type withoutCharacterProps = Omit<T, keyof WithCharacterProps>;
+  return function (props: withoutCharacterProps) {
+    const [character, setCharacter] = useState<CharacterType | null>(null);
+    useEffect(() => {
+      new Promise(function (resolve, _) {
+        setTimeout(function () {
+          resolve({
+            name: "3-D Man",
+            alignment: "neutral",
+            power: 25,
+          });
+        }, 2000);
+      }).then((c: CharacterType) => {
+        setCharacter(c);
+      });
+    }, []);
+
+    return character ? (
+      <Component character={character} {...(props as T)} />
+    ) : (
+      <h1>Loading…</h1>
+    );
+  };
+}
+```
