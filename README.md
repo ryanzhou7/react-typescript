@@ -298,14 +298,16 @@ type Alignment = Exclude<
 
 ## [HOC with TS](https://stevekinney.github.io/react-and-typescript/higher-order-components)
 
-- Create a HOC that accepts a character compatible component, C, that you can later instantiate with additional props
+- Create a HOC that accepts a character compatible component, that you can later instantiate and pass any props
+- HOC has logic + data, passes data to any data compatible component
 
 ```ts
 import { ComponentType, useState, useEffect, CSSProperties } from "react";
 import * as React from "react";
 
+// Allows us to know that CharacterInformation has CharacterType compatible props
+const CharacterInformationWithCharacter = withCharacter(CharacterInformation);
 export default function Application() {
-  const CharacterInformationWithCharacter = withCharacter(CharacterInformation);
   return (
     <CharacterInformationWithCharacter style={{ backgroundColor: "pink" }} />
   );
@@ -336,7 +338,10 @@ const CharacterInformation = ({
 type WithCharacterProps = {
   character: CharacterType;
 };
-function withCharacter<T>(Component: ComponentType<T>) {
+// <T extends WithCharacterProps> defines T
+function withCharacter<T extends WithCharacterProps>(
+  Component: ComponentType<T>
+) {
   type withoutCharacterProps = Omit<T, keyof WithCharacterProps>;
   return function (props: withoutCharacterProps) {
     const [character, setCharacter] = useState<CharacterType | null>(null);
@@ -362,3 +367,233 @@ function withCharacter<T>(Component: ComponentType<T>) {
   };
 }
 ```
+
+- Another example
+
+```ts
+import { ComponentType } from "react";
+import * as React from "react";
+
+type UserModel = {
+  accountId: string;
+  displayName: string;
+  isVerified: boolean;
+};
+
+type NameTagProps = {
+  salutation: string;
+  user: UserModel;
+};
+
+type WithUserProps = { user: UserModel };
+
+function withCurrentUser<T extends WithUserProps>(
+  WrappedComponent: ComponentType<T>
+) {
+  const currentUser = { displayName: "J Mascis" };
+  return function (props: Omit<T, keyof WithUserProps>) {
+    return <WrappedComponent {...(props as T)} user={currentUser} />;
+  };
+}
+
+const NameTag = ({ user, salutation }: NameTagProps) => {
+  return (
+    <main>
+      <h1>{salutation}</h1>
+      <p>My Name Is</p>
+      <p>{user.displayName}</p>
+    </main>
+  );
+};
+
+const NameTagWithCurrentUser = withCurrentUser(NameTag);
+
+export default function Application() {
+  <NameTagWithCurrentUser salutation="Howdy" />;
+}
+```
+
+## Advanced Component Patterns
+
+### [Limiting props a component can take based on other props](https://stevekinney.github.io/react-and-typescript/limiting-props)
+
+- Ex: `<Button primary />` but not `<Button primary secondary/>`
+
+```ts
+import * as React from "react";
+
+// Defaults as button, but can underlying be something else
+type ButtonOwnProps<E extends React.ElementType = React.ElementType> = {
+  children: string;
+  primary?: boolean;
+  secondary?: boolean;
+  destructive?: boolean;
+  as?: E;
+};
+
+// ButtonProps has our button props (ButtonOwnProps) + the react component's props
+type ButtonProps<E extends React.ElementType> = ButtonOwnProps<E> &
+  Omit<React.ComponentProps<E>, keyof ButtonOwnProps>;
+
+const createClassNames = (classes: { [key: string]: boolean }): string => {
+  let classNames = "";
+  for (const [key, value] of Object.entries(classes)) {
+    if (value) classNames += key + " ";
+  }
+  return classNames.trim();
+};
+
+const defaultElement = "button";
+
+function Button<E extends React.ElementType = typeof defaultElement>({
+  children,
+  primary = false,
+  secondary = false,
+  destructive = false,
+  as,
+}: ButtonProps<E>) {
+  const TagName = as || defaultElement; // if there was an as, otherwise default
+  let classNames = createClassNames({ primary, secondary, destructive });
+  if (TagName !== "button") classNames += " button";
+
+  return <TagName className={classNames}>{children}</TagName>;
+}
+
+export default function Application() {
+  return (
+    <main>
+      <Button primary as="a">
+        Primary
+      </Button>
+      <Button secondary>Secondary</Button>
+      <Button destructive>Destructive</Button>
+    </main>
+  );
+}
+```
+
+### [Polymorphic components](https://stevekinney.github.io/react-and-typescript/polymorphic-components)
+
+```ts
+import * as React from "react";
+
+type TextOwnProps<E extends React.ElementType = React.ElementType> = {
+  children: string;
+  as?: E;
+};
+
+type TextProps<E extends React.ElementType> = TextOwnProps &
+  Omit<React.ComponentProps<E>, keyof TextOwnProps>;
+
+function Text<E extends React.ElementType>({
+  children,
+  as,
+  ...rest
+}: TextProps<E>) {
+  const TagName = as || "div";
+  return <TagName {...rest}>{children}</TagName>;
+}
+
+const Application = () => {
+  return (
+    <main>
+      <Text as="label" htmlFor="id">
+        Hello
+      </Text>
+    </main>
+  );
+};
+
+export default Application;
+```
+
+### [Function overloads](https://stevekinney.github.io/react-and-typescript/overloads)
+
+- Ability to give more than one type signature to the same function
+  - Declare multiple head functions with a single tail that handles all of these
+
+```ts
+// simplest
+function add(a: number): (b: number) => number;
+function add(a: number, b: number): number;
+function add(a: any, b?: any): number | ((b: number) => number) {
+  if (b === undefined) return (b: number) => a + b;
+  return a + b;
+}
+const five = add(2, 3);
+const add2 = add(2);
+five === add2(3);
+```
+
+```ts
+// more complicated
+type callback = (result: number) => void;
+function asyncAdd(a: number, b: number): Promise<number>;
+function asyncAdd(a: number, b: number, fn: callback): void;
+function asyncAdd(a: number, b: number, fn?: callback) {
+  const result = a + b;
+  if (fn) return fn(result);
+  else return Promise.resolve(result);
+}
+```
+
+### [Demanding Props Based on Other Props](https://stevekinney.github.io/react-and-typescript/dependent-props)
+
+- Component function overloading example in react
+
+```ts
+// react
+type TextProps = {
+  children: string;
+} & React.ComponentPropsWithoutRef<"div">;
+
+type NoTruncateTextProps = TextProps & { truncate?: false };
+type TruncateTextProps = TextProps & { truncate: true; expanded?: boolean };
+
+const truncateString = (string: string, length = 10) =>
+  string.slice(0, length) + "…";
+
+function Text(props: NoTruncateTextProps): JSX.Element;
+function Text(props: TruncateTextProps): JSX.Element;
+function Text(props: TextProps & { truncate?: boolean; expanded?: boolean }) {
+  const { children, truncate, expanded, ...otherProps } = props;
+  const shouldTruncate = truncate && !expanded;
+  return (
+    <div aria-expanded={!!expanded} {...otherProps}>
+      {shouldTruncate ? truncateString(children) : children}
+    </div>
+  );
+}
+
+const longText = "Potentially long text";
+export default function Application() {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <main>
+      {/* you can only use expanded if truncated is included */}
+      <Text truncate expanded={expanded} id="Text" style={{ color: "red" }}>
+        {longText}
+      </Text>
+      <section style={{ marginTop: "1em" }}>
+        <button onClick={() => setExpanded(!expanded)}>
+          {expanded ? "Contract" : "Expand"}
+        </button>
+      </section>
+      {/* ERROR - no overload matches this */}
+      <Text expanded={expanded}>{longText}</Text>
+      {/* OK */}
+      <Text truncate>{longText}</Text>
+    </main>
+  );
+}
+```
+
+### [Context API Edge Cases](https://stevekinney.github.io/react-and-typescript/create-context)
+
+- Context API Edge Cases, eliminating `as` cast
+- [Video](https://frontendmasters.com/courses/react-typescript/context-api-edge-cases/)
+
+## Migrating from JS
+
+- [TS handbook guide](https://www.typescriptlang.org/docs/handbook/migrating-from-javascript.html)
+- [Project Example](https://github.com/Microsoft/TypeScript-React-Conversion-Guide#typescript-react-conversion-guide)
